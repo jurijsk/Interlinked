@@ -1,0 +1,8 @@
+{
+	"files.exclude": {
+		"**/*.js": false
+	},
+	"search.exclude": {
+		"**/*.js": true
+	}
+}

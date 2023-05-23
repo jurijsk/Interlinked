@@ -1,0 +1,19 @@
+{
+	"name": "Interlinked",
+	"version": "1.0.0",
+	"description": "Link two layers together for quicker back and forth navigation in Design or Presentation modes.",
+	"main": "code.js",
+	"scripts": {
+		"build": "tsc -p tsconfig.json",
+		"watch": "npm run build -- --watch"
+	},
+	"author": "Jurijs Kovzels",
+	"license": "",
+	"devDependencies": {
+		"@figma/plugin-typings": "*",
+		"typescript": "*"
+	},
+	"dependencies": {
+		"figma-plugin-ds": "^1.0.1"
+	}
+}

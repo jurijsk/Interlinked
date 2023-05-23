@@ -1,0 +1,49 @@
+{
+	"name": "Interlinked",
+	"id": "1242142144980840936",
+	"api": "1.0.0",
+	"main": "code.js",
+	"capabilities": [],
+	"enableProposedApi": false,
+	"editorType": [
+		"figma"
+	],
+	"enablePrivatePluginApi": true,
+	"relaunchButtons": [
+		{
+			"command": "interactions_toggle",
+			"name": "Toggle interactions linking",
+			"multipleSelection": false
+		},
+		{
+			"command": "interlink",
+			"name": "Intelink",
+			"multipleSelection": true
+		},
+		{
+			"command": "experiment",
+			"name": "Experiment",
+			"multipleSelection": true
+		},
+		{
+			"command": "with_hyperlinks",
+			"name": "with_hyperlinks",
+			"multipleSelection": true
+		},
+		{
+			"command": "with_both",
+			"name": "with_both",
+			"multipleSelection": true
+		}
+	],
+
+	"menu": [
+		{"name": "with Hyperlinks Only", "command": "with_hyperlinks"},
+		{"name": "with Hyperlinks & Interactions", "command": "with_both"}
+	],
+	"networkAccess": {
+		"allowedDomains": [
+			"none"
+		]
+	}
+}
