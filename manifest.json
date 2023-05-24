@@ -23,7 +23,7 @@
 		{
 			"command": "experiment",
 			"name": "Experiment",
-			"multipleSelection": true
+			"multipleSelection": false
 		},
 		{
 			"command": "with_hyperlinks",
