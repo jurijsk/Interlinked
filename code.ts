@@ -36,7 +36,6 @@ function recoverDefaultComponent() {
 
 async function createDefaultNode(): Promise<InstanceNode> {
 	let variantId = figma.currentPage.getPluginData(PROP_VARIANT_ID_KEY);
-	console.log("createDefaultNode:variantId:", variantId)
 	let variant = figma.getNodeById(variantId); //happy path
 
 	let component: SceneNode = null;
@@ -173,16 +172,16 @@ function dispatch() {
 			timeout: 5000,
 			onDequeue: (reason: NotifyDequeueReason) => {
 				if (reason == "timeout") {
-					console.log("dispatch: closed on timeout")
+					//console.log("dispatch: closed on timeout")
 				} else if (reason == "dismiss") {
-					console.log("dispatch: dismissed")
+					//console.log("dispatch: dismissed")
 				}
 				figma.closePlugin();
 			},
 			button: {
 				text: "Create nodes & Interlink",
 				action: () => {
-					console.log("dispatch: handling button click")
+					//console.log("dispatch: handling button click")
 					interlink();
 					return true;
 				}
@@ -220,10 +219,6 @@ function setInteractionLinking(value: "on" | "off") {
 	setupGlobalRelaunchCommands();
 }
 
-
-
-
-
 // Runs this code if the plugin is run in Figma
 if (figma.editorType === 'figma') {
 	if (figma.command == CMD_INTERACTIONS_TOGGLE) {
@@ -239,8 +234,6 @@ if (figma.editorType === 'figma') {
 		//setupExperiment();
 	}
 }
-
-
 
 async function setupDefaultComponent(): Promise<ComponentSetNode> {
 	let component = await createInterlinkComponent().then((component: ComponentSetNode) => {
@@ -393,7 +386,6 @@ async function createInterlinkComponent() {
 	});
 	return component
 }
-
 
 function setupExperiment() {
 	let commands = figma.currentPage.getRelaunchData();
