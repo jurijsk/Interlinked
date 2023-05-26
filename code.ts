@@ -3,40 +3,90 @@
 // a full browser environment (see documentation).
 
 //console.log((<VectorNode>figma.currentPage.selection[0]).vectorNetwork)
-//console.log((<VectorNode>figma.currentPage.selection[0]).vectorPaths)
+//console.log((<VectorNode>figma.currentPage.selection[0]).strokes)
 
-const OTHER_SIDE_ID_KEY = "otherSideId";
+const PROP_OTHER_SIDE_ID_KEY = "otherSideId";
 const FAUIL_MISERABLY = true;
 const EXPECTED_TXT_NODE_NAME = 'interlink';
+const PADDING = 20;
+const DEFAULT_COMPONENT_NAME = "interlink";
+const PROP_INTERACTIONS_TOGGLE = 'prop_interactions_toggle';
+const PROP_COMPONENT_NAME_KEY = "prop_component_name"
+const PROP_VARIANT_ID_KEY = "prop_variant_id";
+const PROP_VARIANT_NAME_KEY = "prop_variant_name"
 
-let reactionTemplate: Action = {
-	destinationId: undefined,
-	navigation: "NAVIGATE",
-	preserveScrollPosition: false,
-	resetVideoPosition: false,
-	transition: null,
-	type: "NODE"
-};
+function dev_clearPageData() {
+	figma.currentPage.setPluginData(PROP_COMPONENT_NAME_KEY, "");
+	figma.currentPage.setPluginData(PROP_INTERACTIONS_TOGGLE, "");
+	figma.currentPage.setPluginData(PROP_VARIANT_ID_KEY, "");
+	figma.currentPage.setPluginData(PROP_VARIANT_NAME_KEY, "");
 
-type Interlinkable = InstanceNode | FrameNode;
-function interlink(thisSide: Interlinkable, otherSide: Interlinkable) {
-	if (!thisSide) {
-		figma.closePlugin("Nothing to link here.");
-		return;
+}
+
+const VALUE_INTERACTIONS_TOGGLE_OFF = 'off';
+const VALUE_INTERACTIONS_TOGGLE_ON = 'on';
+
+const CMD_INTERACTIONS_TOGGLE = 'toggle_interactions';
+const CMD_INTERLINK = 'interlink';
+const CMD_EXPERIMENT_KEY = 'experiment';
+
+function recoverDefaultComponent() {
+	console.warn("not implemented")
+}
+
+async function createDefaultNode(): Promise<InstanceNode> {
+	let variantId = figma.currentPage.getPluginData(PROP_VARIANT_ID_KEY);
+	console.log("createDefaultNode:variantId:", variantId)
+	let variant = figma.getNodeById(variantId); //happy path
+
+	let component: SceneNode = null;
+
+	if (!variant) {
+		//not created or set yet, or was lifted
+		let knownComponentName = figma.currentPage.getPluginData(PROP_COMPONENT_NAME_KEY);
+		if (!knownComponentName) {
+			component = await setupDefaultComponent();
+		} else {
+			recoverDefaultComponent();
+		}
 	}
-	let thisSideInterlink = thisSide.findOne(n => n.type === "TEXT" && n.name === EXPECTED_TXT_NODE_NAME) as TextNode;
+	//repeat after component creation/restore
+	variantId = figma.currentPage.getPluginData(PROP_VARIANT_ID_KEY);
+	variant = <ComponentNode>figma.getNodeById(variantId); //happy path
+
+	let instance = variant.createInstance();
+
+	return instance;
+}
+
+type Interlinkable = InstanceNode;// | FrameNode; doing this on frames is silly
+async function interlink(thisSide: Interlinkable = null, otherSide: Interlinkable = null) {
+	if (!thisSide) {
+		thisSide = await createDefaultNode();
+
+		thisSide.x = Math.round(figma.viewport.center.x - thisSide.width - PADDING / 2);
+		thisSide.y = Math.round(figma.viewport.center.y + thisSide.height + 80);
+	}
 
 	if (!otherSide) {
-		//if only one node is selected try to recover the the other side from destinationId
-		let otherSideId = thisSide.getPluginData(OTHER_SIDE_ID_KEY);
-
+		let otherSideId = thisSide.getPluginData(PROP_OTHER_SIDE_ID_KEY);
 		otherSide = <Interlinkable>figma.getNodeById(otherSideId);
 		if (!otherSide) {
-			figma.closePlugin("Can not find pairing component instance");
-			return;
+			otherSide = await createDefaultNode();
+
+			otherSide.x = Math.round(thisSide.x + thisSide.width + 24);
+			otherSide.y = Math.round(thisSide.y);
 		}
 	}
 
+	function createHyperlink(destinationId: string): HyperlinkTarget {
+		return {
+			type: "NODE",
+			value: destinationId
+		}
+	}
+
+	let thisSideInterlink = thisSide.findOne(n => n.type === "TEXT" && n.name === EXPECTED_TXT_NODE_NAME) as TextNode;
 	if (thisSideInterlink) {
 		thisSideInterlink.hyperlink = createHyperlink(otherSide.id);
 	}
@@ -50,128 +100,305 @@ function interlink(thisSide: Interlinkable, otherSide: Interlinkable) {
 		figma.closePlugin(`Selected component do not have text layer named '${EXPECTED_TXT_NODE_NAME}'.`);
 	}
 
-
-	const interactionsEnabled = figma.currentPage.getPluginData(INTERACTIONS_TOGGLE) == INTERACTIONS_TOGGLE_ON ? true : false;
+	const interactionsEnabled = figma.currentPage.getPluginData(PROP_INTERACTIONS_TOGGLE) == VALUE_INTERACTIONS_TOGGLE_ON ? true : false;
 	if (interactionsEnabled) {
+		function createReaction(destinationId: string): Reaction {
+			return {
+				action: {
+					destinationId: destinationId,
+					navigation: "NAVIGATE",
+					preserveScrollPosition: false,
+					resetVideoPosition: false,
+					transition: null,
+					type: "NODE"
+				},
+				trigger: { type: 'ON_CLICK' }
+			}
+		}
 		thisSide.reactions = [createReaction(otherSide.id)];
 		otherSide.reactions = [createReaction(thisSide.id)];
 	}
 	//Prepare ground to relink the nodes if one was copy pasted.
-	thisSide.setPluginData(OTHER_SIDE_ID_KEY, otherSide.id);
-	otherSide.setPluginData(OTHER_SIDE_ID_KEY, thisSide.id);
+	thisSide.setPluginData(PROP_OTHER_SIDE_ID_KEY, otherSide.id);
+	otherSide.setPluginData(PROP_OTHER_SIDE_ID_KEY, thisSide.id);
 	thisSide.setRelaunchData({ interlink: "Use after cut/paste" });
 	otherSide.setRelaunchData({ interlink: "Use after cut/paste" });
 
 
-	//figma.currentPage.flowStartingPoints = figma.currentPage.flowStartingPoints.slice(0, figma.currentPage.flowStartingPoints.length - 1);
-
 	figma.closePlugin(interactionsEnabled ? "With" : "Without" + " interactions. Interlinked.");
 }
 
-function createHyperlink(destinationId: string): HyperlinkTarget {
-	return {
-		type: "NODE",
-		value: destinationId
-	}
-}
-
-function createReaction(destinationId: string): Reaction {
-	return {
-		action: {
-			destinationId: destinationId,
-			navigation: "NAVIGATE",
-			preserveScrollPosition: false,
-			resetVideoPosition: false,
-			transition: null,
-			type: "NODE"
-		},
-		trigger: { type: 'ON_CLICK' }
-	}
-}
-
-function getInteractables(selection: readonly SceneNode[]) {
-	let interlinkables = new Array<Interlinkable>();
-	for (let i = 0; i < selection.length; i++) {
-		const node = selection[i];
-		if (node.type == "FRAME" || node.type == "INSTANCE") {
-			interlinkables.push(node);
-		}
-	}
-	return interlinkables;
-}
-
+//called on invocation from Command Palette
 function dispatch() {
-	let interlinkables = getInteractables(figma.currentPage.selection);
-	if (interlinkables.length == 0) {
-		figma.closePlugin("Select two component instances to interlink");
-		return;
-	} else if (interlinkables.length > 2) {
-		figma.closePlugin("Can't interlink more then two nodes");
-		return;
+	function getGoodSelection(seelction: readonly SceneNode[]): Interlinkable[] | null {
+		if (seelction.length == 0) {
+			return [];
+		}
+		if (seelction.length > 2) {
+			return null;
+		}
+		let thisSide = seelction[0];
+
+		if (thisSide.type != "INSTANCE") {
+			return null;
+		}
+
+		const isProperText = (node: SceneNode) => { return node.type == "TEXT" && node.name == EXPECTED_TXT_NODE_NAME };
+
+		let thisText = thisSide.findOne(isProperText);
+		if (!thisText) {
+			return null;
+		}
+
+		let otherSide = seelction[1];
+		if (!otherSide) {
+			//one proper instance selected;
+			return [thisSide];
+		}
+		if (otherSide.type != "INSTANCE") {
+			return null;
+		}
+		let otherText = thisSide.findOne(isProperText);
+		if (!otherText) {
+			return null;
+		}
+		return [thisSide, otherSide];
 	}
-	interlink(interlinkables[0], interlinkables[1]);
+	let goodSelection = getGoodSelection(figma.currentPage.selection);
+
+	if (goodSelection) {
+		interlink(goodSelection[0], goodSelection[1])
+	} else {
+		figma.notify("Can not interlink with current selection", {
+			timeout: 5000,
+			onDequeue: (reason: NotifyDequeueReason) => {
+				if (reason == "timeout") {
+					console.log("dispatch: closed on timeout")
+				} else if (reason == "dismiss") {
+					console.log("dispatch: dismissed")
+				}
+				figma.closePlugin();
+			},
+			button: {
+				text: "Create nodes & Interlink",
+				action: () => {
+					console.log("dispatch: handling button click")
+					interlink();
+					return true;
+				}
+			}
+		});
+	}
 }
 
-const INTERACTIONS_TOGGLE = 'interactions_toggle';
-const INTERACTIONS_TOGGLE_OFF = 'off';
-const INTERACTIONS_TOGGLE_ON = 'on';
 
 function setupGlobalRelaunchCommands() {
 	const commands: { [key: string]: string } = {}
 
-	let interactions_toggle = figma.currentPage.getPluginData(INTERACTIONS_TOGGLE) || INTERACTIONS_TOGGLE_ON;
-	commands[INTERACTIONS_TOGGLE] = "Currently " + interactions_toggle;
-
+	let interactions_toggle = figma.currentPage.getPluginData(PROP_INTERACTIONS_TOGGLE) || VALUE_INTERACTIONS_TOGGLE_ON;
+	commands[CMD_INTERLINK] = "";
+	commands[CMD_INTERACTIONS_TOGGLE] = "Currently " + interactions_toggle;
 	figma.currentPage.parent.setRelaunchData(commands);
 }
 
 function toggleInteractionLinking() {
-	let interactions_toggle = figma.currentPage.getPluginData(INTERACTIONS_TOGGLE);
+	let interactions_toggle = figma.currentPage.getPluginData(PROP_INTERACTIONS_TOGGLE);
 	if (!interactions_toggle) {
-		interactions_toggle = INTERACTIONS_TOGGLE_ON; //set to on by default
+		interactions_toggle = VALUE_INTERACTIONS_TOGGLE_ON; //set to on by default
 	} else {
-		interactions_toggle = interactions_toggle === INTERACTIONS_TOGGLE_ON
-			? INTERACTIONS_TOGGLE_OFF
-			: INTERACTIONS_TOGGLE_ON
+		interactions_toggle = interactions_toggle === VALUE_INTERACTIONS_TOGGLE_ON
+			? VALUE_INTERACTIONS_TOGGLE_OFF
+			: VALUE_INTERACTIONS_TOGGLE_ON
 	}
-	figma.currentPage.setPluginData(INTERACTIONS_TOGGLE, interactions_toggle);
+	figma.currentPage.setPluginData(PROP_INTERACTIONS_TOGGLE, interactions_toggle);
 	setupGlobalRelaunchCommands();
 	figma.closePlugin(`Prototype Interactions linking are now ${interactions_toggle}.`);
 }
 
 function setInteractionLinking(value: "on" | "off") {
-	figma.currentPage.setPluginData(INTERACTIONS_TOGGLE, value);
+	figma.currentPage.setPluginData(PROP_INTERACTIONS_TOGGLE, value);
 	setupGlobalRelaunchCommands();
 }
 
 
-let EXPERIMENT_KEY = 'experiment';
-function setupExperiment() {
-	let commnads = figma.currentPage.getRelaunchData();
-	commnads[EXPERIMENT_KEY] = "Launch me";
-	figma.currentPage.setRelaunchData(commnads);
-}
+
+
 
 // Runs this code if the plugin is run in Figma
 if (figma.editorType === 'figma') {
-	if (figma.command == INTERACTIONS_TOGGLE) {
+	if (figma.command == CMD_INTERACTIONS_TOGGLE) {
 		toggleInteractionLinking();
-	} else if (figma.command == EXPERIMENT_KEY) {
-		console.log("before createInterlinkComponent")
-		createInterlinkComponent();
-	} else if (figma.command == "with_hyperlinks") {
-		setInteractionLinking(INTERACTIONS_TOGGLE_OFF);
-		dispatch();
-	} else if (figma.command == "with_both") {
-		setInteractionLinking(INTERACTIONS_TOGGLE_ON);
+	} else if (figma.command == CMD_EXPERIMENT_KEY) {
+		experiment()
+	} else if (figma.command == CMD_INTERLINK) {
 		dispatch();
 	} else { //launch from command menu
 		//default action
-		setupGlobalRelaunchCommands()
+		setupGlobalRelaunchCommands();
 		dispatch();
-
-		setupExperiment();
+		//setupExperiment();
 	}
+}
+
+
+
+async function setupDefaultComponent(): Promise<ComponentSetNode> {
+	let component = await createInterlinkComponent().then((component: ComponentSetNode) => {
+		let variant = component.defaultVariant;
+		//will need all that if component was copy/pasted => ids will change 
+		figma.currentPage.setPluginData(PROP_COMPONENT_NAME_KEY, component.name);
+		figma.currentPage.setPluginData(PROP_VARIANT_ID_KEY, variant.id);
+		figma.currentPage.setPluginData(PROP_VARIANT_NAME_KEY, variant.name);
+		return component;
+	});
+	return component;
+}
+
+async function createInterlinkComponent() {
+	function createVariant(flip: boolean, name: string) {
+		var component = figma.createComponent()
+		component.name = name;
+		component.layoutMode = "HORIZONTAL";
+		component.horizontalPadding = 20;
+		component.verticalPadding = 12;
+		component.itemSpacing = 12;
+		component.clipsContent = false;
+		component.resize(10, 10);
+
+		let background = figma.createRectangle();
+
+		background.resize(10, 10);
+		background.name = 'bg';
+		background.locked = true;
+		component.appendChild(background);
+
+		background.layoutPositioning = "ABSOLUTE";
+		background.x = 0;
+		background.y = 0;
+		background.constraints = { horizontal: "STRETCH", vertical: "STRETCH" };
+		background.cornerRadius = 100;
+
+		background.fills = [{
+			type: "GRADIENT_LINEAR",
+			gradientTransform: [
+				[0.9, 0.1, 0],
+				[-0.1, 0.1, 0.5],
+			],
+			gradientStops: [
+				{ color: { r: 0.8549019694328308, g: 0.8549019694328308, b: 0.8941176533699036, a: 1 }, position: 0 },
+				{ color: { r: 0.8392156958580017, g: 0.8470588326454163, b: 0.8980392217636108, a: 1 }, position: 1 }]
+		}]
+		background.effects = [
+			{ type: "DROP_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: -2, y: -2 }, radius: 15, spread: 4, color: { r: 1, g: 1, b: 1, a: 1 } }
+			, { type: "DROP_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: 3, y: 3 }, radius: 15, spread: 0, color: { r: 0.2, g: 0.2, b: 0.2, a: 0.81 } }
+			, { type: "INNER_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: 2, y: 2 }, radius: 2, spread: -2, color: { r: 1, g: 1, b: 1, a: 0.75 } }
+			, { type: "INNER_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: -1, y: -1 }, radius: 2, spread: -1, color: { r: 0, g: 0, b: 0, a: 0.6 } }
+		]
+		background.strokes = [{
+			type: "GRADIENT_LINEAR",
+			visible: true,
+			blendMode: "NORMAL",
+			gradientStops: [
+				{ color: { r: 1, g: 1, b: 1, a: 0.21 }, position: 0 },
+				{ color: { r: 0.93, g: 0.93, b: 0.93, a: 0 }, position: 0 }
+			],
+			gradientTransform: [
+				[0.65, 0.64, -0.18],
+				[-0.64, 0.65, 0.59],
+			]
+		}
+		];
+
+		let text = figma.createText();
+		text.fontName = FONT
+		text.fontSize = 16
+		text.autoRename = false
+		text.characters = "Jump to the other side"
+		text.textAutoResize = "WIDTH_AND_HEIGHT";
+		text.name = EXPECTED_TXT_NODE_NAME
+
+		text.effects = [
+			{
+				type: "DROP_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: 0, y: 0 }, radius: 2, spread: 0,
+				color: { r: 1, g: 1, b: 1, a: .25 }
+			}
+		];
+		let icon = figma.createVector();
+		icon.name = 'icon';
+		icon.vectorPaths = [{ data: flip ? iconLeftData : iconRightData, windingRule: "EVENODD" }]
+		icon.constrainProportions = true
+		icon.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 } }];
+		icon.strokes = [];
+		icon.locked = true;
+
+		let iconBox = figma.createFrame();
+		iconBox.resize(24, 24)
+		iconBox.constrainProportions = true
+		iconBox.fills = [];
+		iconBox.locked = true;
+
+		iconBox.appendChild(icon);
+		iconBox.name = 'icon';
+		icon.x = 1.5;
+		icon.y = 6.5;
+		icon.constraints = { horizontal: "SCALE", vertical: "SCALE" };
+		icon.effects = [
+			{
+				type: "DROP_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: 0, y: 0 }, radius: 2, spread: 0,
+				color: { r: 1, g: 1, b: 1, a: .25 }
+			}
+		];
+
+		if (flip) {
+			component.appendChild(text);
+			component.appendChild(iconBox);
+		} else {
+			component.appendChild(iconBox);
+			component.appendChild(text);
+		}
+		component.counterAxisSizingMode = "AUTO"
+		component.primaryAxisSizingMode = "AUTO"
+
+		component.setRelaunchData({ interlink: "" });
+		return component;
+	}
+	var component: ComponentSetNode;
+	let FONT = { family: "Sarpanch", style: "Regular" };
+	await figma.loadFontAsync(FONT).then(() => {
+		let left = createVariant(true, "flip=true");
+		let right = createVariant(false, "flip=false");
+
+		component = figma.combineAsVariants([left, right], figma.currentPage)
+		component.name = DEFAULT_COMPONENT_NAME;
+
+
+		component.layoutMode = "HORIZONTAL"
+		component.counterAxisSizingMode = "AUTO"
+		component.primaryAxisSizingMode = "AUTO"
+		component.paddingTop = PADDING
+		component.paddingRight = PADDING
+		component.paddingBottom = PADDING
+		component.paddingLeft = PADDING
+		component.itemSpacing = 24
+		component.cornerRadius = 5
+
+		component.strokes = [{ type: "SOLID", color: { r: 0.5921568870544434, g: 0.27843138575553894, b: 1 } }];
+		component.strokeAlign = "INSIDE";
+		component.dashPattern = [10, 5];
+
+		component.layoutMode = "NONE";
+
+		component.x = Math.round(figma.viewport.center.x - (component.width / 2))
+		component.y = Math.round(figma.viewport.center.y - (component.height / 2))
+	});
+	return component
+}
+
+
+function setupExperiment() {
+	let commands = figma.currentPage.getRelaunchData();
+	commands[CMD_EXPERIMENT_KEY] = "Experiment";
+	figma.currentPage.setRelaunchData(commands);
 }
 
 function experiment() {
@@ -186,147 +413,5 @@ function experiment() {
 	});
 }
 
-
-
-/**
- * Creates a new component that represents a ticket status
- * @param statusColor RGB value for status color
- * @param statusName Name of status
- * @returns A component that represent a ticket
- */
-async function createInterlinkComponent() {
-	
-	// Create the main frame
-	var component = figma.createComponent()
-	component.name = "interlink";
-	component.layoutMode = "HORIZONTAL";
-	component.horizontalPadding = 20;
-	component.verticalPadding = 12;
-	component.itemSpacing = 12;
-	component.clipsContent = false;
-	component.resize(10, 10);
-
-
-
-	let background = figma.createRectangle();
-
-	background.resize(10, 10);
-	background.name = 'bg';
-	background.locked = true;
-	component.appendChild(background);
-
-	background.layoutPositioning = "ABSOLUTE";
-	background.x = 0;
-	background.y = 0;
-	background.constraints = { horizontal: "STRETCH", vertical: "STRETCH" };
-	background.cornerRadius = 100;
-
-
-	background.fills = [{
-		type: "GRADIENT_LINEAR",
-		gradientTransform: [
-			[0.9, 0.1, 0],
-			[-0.1, 0.1, 0.5],
-		],
-		gradientStops: [
-			{ color: { r: 0.8549019694328308, g: 0.8549019694328308, b: 0.8941176533699036, a: 1 }, position: 0 },
-			{ color: { r: 0.8392156958580017, g: 0.8470588326454163, b: 0.8980392217636108, a: 1 }, position: 1 }]
-	}]
-	background.effects = [
-		{ type: "DROP_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: -2, y: -2 }, radius: 15, spread: 4, color: { r: 1, g: 1, b: 1, a: 1 } }
-		, { type: "DROP_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: 3, y: 3 }, radius: 15, spread: 0, color: { r: 0.2, g: 0.2, b: 0.2, a: 0.81 } }
-		, { type: "INNER_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: 2, y: 2 }, radius: 2, spread: -2, color: { r: 1, g: 1, b: 1, a: 0.75 } }
-		, { type: "INNER_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: -1, y: -1 }, radius: 2, spread: -1, color: { r: 0, g: 0, b: 0, a: 0.6 } }
-	]
-	background.strokes = [{
-		type: "GRADIENT_LINEAR", 
-		visible: true,
-		blendMode: "NORMAL", 
-		gradientStops: [
-			{ color: { r: 1, g: 1, b: 1, a: 0.21 }, position: 0 },
-			{ color: { r: 0.93, g: 0.93, b: 0.93, a: 0 }, position: 0 }
-		],
-		gradientTransform: [
-			[0.65, 0.64, -0.18],
-			[-0.64, 0.65, 0.59],
-		]}
-	];
-
-
-
-	let FONT = { family: "Sarpanch", style: "Regular" };
-	await figma.loadFontAsync(FONT).then(() => {
-
-		let text = figma.createText();
-		text.fontName = FONT
-		text.fontSize = 16
-		text.autoRename = false
-		text.characters = "Jump to the other side"
-		text.textAutoResize = "WIDTH_AND_HEIGHT";
-		text.name = EXPECTED_TXT_NODE_NAME
-		
-		text.effects = [
-			{ type: "DROP_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: 0, y: 0 }, radius: 2, spread: 0, 
-			color: { r: 1, g: 1, b: 1, a: .25 } }
-		];
-
-
-
-		component.appendChild(text);
-
-
-
-
-		component.counterAxisSizingMode = "AUTO"
-		component.primaryAxisSizingMode = "AUTO"
-
-		//component.resize(200, 40);
-		component.x = Math.round(figma.viewport.center.x - (component.width / 2));
-		component.y = Math.round(figma.viewport.center.y - (component.height / 2));
-
-		let icon = figma.createVector();
-		icon.name = 'icon';
-		icon.vectorPaths = [{data: iconLeftData, windingRule: "EVENODD"}]
-		icon.constrainProportions = true
-		icon.fills = [{type: "SOLID", color: { r: 0, g: 0, b: 0 }}];
-		icon.strokes = [];
-		icon.locked = true;
-
-		let iconBox = figma.createFrame();
-		iconBox.resize(24,24)
-		iconBox.constrainProportions = true
-		iconBox.fills = [];
-		iconBox.locked = true;
-		
-		iconBox.appendChild(icon);
-		iconBox.name = 'icon';
-		icon.x = 1.5;
-		icon.y = 6.5;
-		icon.constraints = {horizontal: "SCALE", vertical: "SCALE"};
-		icon.effects = [
-			{ type: "DROP_SHADOW", visible: true, blendMode: "NORMAL", offset: { x: 0, y: 0 }, radius: 2, spread: 0, 
-			color: { r: 1, g: 1, b: 1, a: .25 } }
-		];
-		
-		component.appendChild(iconBox);
-		
-		component.setRelaunchData({ interlink: "" });
-
-
-
-
-		let thisSide =  component.createInstance();
-		//console.log(component.x);
-		thisSide.x = component.x;
-		thisSide.y = component.y + component.height + 80;
-
-
-		figma.closePlugin("go away");
-	});
-
-
-	return component
-}
-
-
 const iconLeftData = "M 12.579127693176268 0.33518269790833294 C 12.784025573730467 0.0012821631495806285 13.215891265869141 -0.10022280552300744 13.543726539611816 0.10846505526067082 L 20.67099914550781 4.645419364635437 C 20.875666046142577 4.775702982818368 21 5.00418197435787 21 5.25 C 21 5.49581802564213 20.875666046142577 5.724297017181633 20.67099914550781 5.8545802954035 L 13.543726539611816 10.39153474288745 C 13.215891265869141 10.600222561175995 12.784025573730467 10.498716986947763 12.579127693176268 10.16481674965494 C 12.374231147766112 9.83091651236212 12.473891639709473 9.391061290446869 12.801728248596191 9.182373472158323 L 18.979242134094235 5.25 L 12.801728248596191 1.3176259329098174 C 12.473891639709473 1.1089380721261393 12.374231147766112 0.6690832539146516 12.579127693176268 0.33518269790833294 Z M 5.154545211791992 1.4259955759733653 C 4.158778095245361 1.4259955759733653 3.20379478931427 1.8288806272054976 2.4996808767318726 2.546020585775576 C 1.795567047595978 3.2631606293359203 1.4 4.235811158428655 1.4 5.25 C 1.4 6.264188841571345 1.795567047595978 7.2368395406446115 2.4996808767318726 7.953979244243893 C 2.848322868347168 8.309071294367753 3.262220525741577 8.59074535329887 3.71774263381958 8.782919902907121 C 4.173264741897583 8.975093772593247 4.661490535736084 9.074004084065573 5.154545211791992 9.074004084065573 L 7.827272605895995 9.074004084065573 C 8.213871574401855 9.074004084065573 8.527272605895995 9.393202365222438 8.527272605895995 9.786954107522886 C 8.527272605895995 10.18070516990121 8.213871574401855 10.499904130980198 7.827272605895995 10.499904130980198 L 5.154545211791992 10.499904130980198 C 4.477641201019287 10.499904130980198 3.807365012168884 10.364112123691434 3.181986045837402 10.100279221353182 C 2.556607580184936 9.836446998937056 1.988375115394592 9.449741289630962 1.5097314834594726 8.962243244407075 C 0.5430666685104371 7.97769492800758 0 6.642360848270845 0 5.25 C 0 3.857638811768092 0.5430667519569398 2.5223049870021557 1.5097314834594726 1.5377569255734578 C 2.4763962149620053 0.55320886414476 3.7874748706817623 0.00009545263804782956 5.154545211791992 0.00009545263804782956 L 7.827272605895995 0.00009545263804782956 C 8.213871574401855 0.00009545263804782956 8.527272605895995 0.31929402269126783 8.527272605895995 0.7130454675257861 C 8.527272605895995 1.1067969123603043 8.213871574401855 1.4259955759733653 7.827272605895995 1.4259955759733653 L 5.154545211791992 1.4259955759733653 Z M 6.236364364624023 5.250000339961064 C 6.236364364624023 4.856248937621678 6.549764728546142 4.53705031650375 6.936364364624023 4.53705031650375 L 14.063636970520019 4.53705031650375 C 14.450235939025879 4.53705031650375 14.763636970520018 4.856248937621678 14.763636970520018 5.250000339961064 C 14.763636970520018 5.643752082261512 14.450235939025879 5.9629503634183765 14.063636970520019 5.9629503634183765 L 6.936364364624023 5.9629503634183765 C 6.549764728546142 5.9629503634183765 6.236364364624023 5.643752082261512 6.236364364624023 5.250000339961064 Z";
+const iconRightData = "M 8.420866012573242 10.164812088012695 C 8.215981006622314 10.498712062835693 7.784115940332413 10.600216686725616 7.456275939941406 10.391536712646484 L 0.3290015757083893 5.854577541351318 C 0.12433406710624695 5.7243025451898575 2.1489003586905475e-8 5.495822846889496 2.7858939046182356e-15 5.250002861022949 C -2.149049726029012e-8 5.004182875156403 0.12433391809463501 4.775702431797981 0.3290015757083893 4.645412445068359 L 7.456275939941406 0.10846497118473053 C 7.784115940332413 -0.10022251307964325 8.215981006622314 0.0012825727462768555 8.420866012573242 0.33517804741859436 C 8.625766009092331 0.6690780222415924 8.5261050760746 1.1089378148317337 8.198265075683594 1.317632794380188 L 2.0207555294036865 5.250002861022949 L 8.198265075683594 9.182372093200684 C 8.5261050760746 9.391067072749138 8.625766009092331 9.830912113189697 8.420866012573242 10.164812088012695 Z M 15.845399856567383 9.073997497558594 C 16.841249883174896 9.073997497558594 17.796149849891663 8.671113014221191 18.5002498626709 7.953978061676025 C 19.20449984073639 7.236843109130859 19.60004997253418 6.264182806015015 19.60004997253418 5.250002861022949 C 19.60004997253418 4.2358078956604 19.20449984073639 3.263162851333618 18.5002498626709 2.5460128784179688 C 18.151649862527847 2.1909328997135162 17.73779946565628 1.9092479646205902 17.282249450683594 1.7170829772949219 C 16.826699435710907 1.5249029844999313 16.338449865579605 1.4259928464889526 15.845399856567383 1.4259928464889526 L 13.172730445861816 1.4259928464889526 C 12.78613543510437 1.4259928464889526 12.472724914550781 1.10679292678833 12.472724914550781 0.7130429744720459 C 12.472724914550781 0.3192930221557617 12.786120474338531 0.00009453277743887156 13.172730445861816 0.00009453277743887156 L 15.845399856567383 0.00009453277743887156 C 16.52234983444214 0.00009453277743887156 17.192700386047363 0.13588646054267883 17.818050384521484 0.3997229337692261 C 18.443400382995605 0.6635579168796539 19.01159965991974 1.050257921218872 19.490249633789062 1.5377578735351562 C 20.45699965953827 2.522297739982605 21 3.8576430082321167 21 5.250002861022949 C 21 6.642362713813782 20.45699965953827 7.97769296169281 19.490249633789062 8.962247848510742 C 18.523649632930756 9.946787714958191 17.212499856948853 10.499897956848145 15.845399856567383 10.499897956848145 L 13.172730445861816 10.499897956848145 C 12.78613543510437 10.499897956848145 12.472724914550781 10.180697202682495 12.472724914550781 9.786947250366211 C 12.472724914550781 9.393197298049927 12.78613543510437 9.073997497558594 13.172730445861816 9.073997497558594 L 15.845399856567383 9.073997497558594 Z M 14.763629913330078 5.250002861022949 C 14.763629913330078 5.643752813339233 14.450235605239868 5.962952613830566 14.063640594482422 5.962952613830566 L 6.9363603591918945 5.962952613830566 C 6.549765348434448 5.962952613830566 6.23637056350708 5.643752813339233 6.23637056350708 5.250002861022949 C 6.236355563507459 4.856252908706665 6.549765348434448 4.537052631378174 6.9363603591918945 4.537052631378174 L 14.063640594482422 4.537052631378174 C 14.450235605239868 4.537052631378174 14.763629913330078 4.856252908706665 14.763629913330078 5.250002861022949 Z"
