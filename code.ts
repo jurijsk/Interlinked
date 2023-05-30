@@ -5,57 +5,93 @@
 //console.log((<VectorNode>figma.currentPage.selection[0]).vectorNetwork)
 //console.log((<VectorNode>figma.currentPage.selection[0]).strokes)
 
+
+const document = <DocumentNode> figma.currentPage.parent; 
+
 const PROP_OTHER_SIDE_ID_KEY = "otherSideId";
 const FAUIL_MISERABLY = true;
 const EXPECTED_TXT_NODE_NAME = 'interlink';
 const PADDING = 20;
 const DEFAULT_COMPONENT_NAME = "interlink";
 const PROP_INTERACTIONS_TOGGLE = 'prop_interactions_toggle';
-const PROP_COMPONENT_NAME_KEY = "prop_component_name"
-const PROP_VARIANT_ID_KEY = "prop_variant_id";
-const PROP_VARIANT_NAME_KEY = "prop_variant_name"
+const PROP_COMPONENT_NAME_KEY = "component_name"
+const PROP_COMPONENT_ID_KEY = "component_id";
+const PROP_INTERLINK_DEFAULT_COMPONENT_MARK_KEY = "interlink_default_component";
 
-function dev_clearPageData() {
-	figma.currentPage.setPluginData(PROP_COMPONENT_NAME_KEY, "");
-	figma.currentPage.setPluginData(PROP_INTERACTIONS_TOGGLE, "");
-	figma.currentPage.setPluginData(PROP_VARIANT_ID_KEY, "");
-	figma.currentPage.setPluginData(PROP_VARIANT_NAME_KEY, "");
 
+function removeGlobalPluginData() {
+	document.setPluginData(PROP_COMPONENT_NAME_KEY, "");
+	document.setPluginData(PROP_INTERACTIONS_TOGGLE, "");
+	document.setPluginData(PROP_COMPONENT_ID_KEY, "");
 }
+
 
 const VALUE_INTERACTIONS_TOGGLE_OFF = 'off';
 const VALUE_INTERACTIONS_TOGGLE_ON = 'on';
 
 const CMD_INTERACTIONS_TOGGLE = 'toggle_interactions';
 const CMD_INTERLINK = 'interlink';
+const CMD_CREATE_N_INTERLINK = 'create_n_interlink';
+
 const CMD_EXPERIMENT_KEY = 'experiment';
 
-function recoverDefaultComponent() {
-	console.warn("not implemented")
+async function ensureDefaultComponent(): Promise<ComponentSetNode| ComponentNode> {
+	let knownComponentName = document.getPluginData(PROP_COMPONENT_NAME_KEY);
+	let component: ComponentSetNode | ComponentNode;
+	if (!knownComponentName) {
+		component = await setupDefaultComponent();
+	} else {
+		//if we are here it means that component was once set but one or many of the following happened:
+		// * copy and pasted back (changes id)
+		// * renamed (designers can be pedantic about component names)
+		// * removed (this we can not recover) 
+
+		figma.skipInvisibleInstanceChildren = true;
+		let candidates = document.findAllWithCriteria({
+			types: ['COMPONENT', 'COMPONENT_SET']
+		});
+		for (let i = 0; i < candidates.length; i++) {
+			const candidate = candidates[i];
+			if (candidate.getPluginData(PROP_INTERLINK_DEFAULT_COMPONENT_MARK_KEY) 
+			|| candidate.findOne(isProperText)) {
+				if (candidate.parent.type == "COMPONENT_SET") {
+					component = candidate.parent;
+				}
+				component = candidate;
+			}
+		}
+	}
+
+	removeGlobalPluginData();
+	if(!component) {
+		return null;
+	}
+	//will need all that if component was copy/pasted => ids will change 	
+	document.setPluginData(PROP_COMPONENT_ID_KEY, component.id);
+	document.setPluginData(PROP_COMPONENT_NAME_KEY, component.name);
+
+	component.setPluginData(PROP_INTERLINK_DEFAULT_COMPONENT_MARK_KEY, "property of Interlinked :)")
+	return component;
 }
 
 async function createDefaultNode(): Promise<InstanceNode> {
-	let variantId = figma.currentPage.getPluginData(PROP_VARIANT_ID_KEY);
-	let variant = figma.getNodeById(variantId); //happy path
-
-	let component: SceneNode = null;
-
-	if (!variant) {
+	let componentId = document.getPluginData(PROP_COMPONENT_ID_KEY);
+	let component = <ComponentNode | ComponentSetNode> figma.getNodeById(componentId); //happy path
+	
+	if (!component) {
 		//not created or set yet, or was lifted
-		let knownComponentName = figma.currentPage.getPluginData(PROP_COMPONENT_NAME_KEY);
-		if (!knownComponentName) {
-			component = await setupDefaultComponent();
-		} else {
-			recoverDefaultComponent();
-		}
+		component = await ensureDefaultComponent();
 	}
-	//repeat after component creation/restore
-	variantId = figma.currentPage.getPluginData(PROP_VARIANT_ID_KEY);
-	variant = <ComponentNode>figma.getNodeById(variantId); //happy path
 
-	let instance = variant.createInstance();
+	if(!component){
+		console.error("can not ensure component");
+	}
 
-	return instance;
+	if(component.type == "COMPONENT_SET"){
+		return component.defaultVariant.createInstance();
+	}
+	
+	return component.createInstance();
 }
 
 type Interlinkable = InstanceNode;// | FrameNode; doing this on frames is silly
@@ -85,12 +121,12 @@ async function interlink(thisSide: Interlinkable = null, otherSide: Interlinkabl
 		}
 	}
 
-	let thisSideInterlink = thisSide.findOne(n => n.type === "TEXT" && n.name === EXPECTED_TXT_NODE_NAME) as TextNode;
+	let thisSideInterlink = <TextNode> thisSide.findOne(isProperText)
 	if (thisSideInterlink) {
 		thisSideInterlink.hyperlink = createHyperlink(otherSide.id);
 	}
 
-	let otherSideInterlink = otherSide.findOne(n => n.type === "TEXT" && n.name === EXPECTED_TXT_NODE_NAME) as TextNode
+	let otherSideInterlink = <TextNode> otherSide.findOne(isProperText);
 	if (otherSideInterlink) {
 		otherSideInterlink.hyperlink = createHyperlink(thisSide.id);
 	}
@@ -99,7 +135,7 @@ async function interlink(thisSide: Interlinkable = null, otherSide: Interlinkabl
 		figma.closePlugin(`Selected component do not have text layer named '${EXPECTED_TXT_NODE_NAME}'.`);
 	}
 
-	const interactionsEnabled = figma.currentPage.getPluginData(PROP_INTERACTIONS_TOGGLE) == VALUE_INTERACTIONS_TOGGLE_ON ? true : false;
+	const interactionsEnabled = document.getPluginData(PROP_INTERACTIONS_TOGGLE) == VALUE_INTERACTIONS_TOGGLE_ON ? true : false;
 	if (interactionsEnabled) {
 		function createReaction(destinationId: string): Reaction {
 			return {
@@ -116,6 +152,8 @@ async function interlink(thisSide: Interlinkable = null, otherSide: Interlinkabl
 		}
 		thisSide.reactions = [createReaction(otherSide.id)];
 		otherSide.reactions = [createReaction(thisSide.id)];
+	}else{
+		//remove interactions?
 	}
 	//Prepare ground to relink the nodes if one was copy pasted.
 	thisSide.setPluginData(PROP_OTHER_SIDE_ID_KEY, otherSide.id);
@@ -124,8 +162,10 @@ async function interlink(thisSide: Interlinkable = null, otherSide: Interlinkabl
 	otherSide.setRelaunchData({ interlink: "Use after cut/paste" });
 
 
-	figma.closePlugin(interactionsEnabled ? "With" : "Without" + " interactions. Interlinked.");
+	figma.closePlugin((interactionsEnabled ? "With" : "Without") + " interactions. Interlinked.");
 }
+
+const isProperText = (node: SceneNode) => { return node.type == "TEXT" && node.name == EXPECTED_TXT_NODE_NAME };
 
 //called on invocation from Command Palette
 function dispatch() {
@@ -142,7 +182,7 @@ function dispatch() {
 			return null;
 		}
 
-		const isProperText = (node: SceneNode) => { return node.type == "TEXT" && node.name == EXPECTED_TXT_NODE_NAME };
+
 
 		let thisText = thisSide.findOne(isProperText);
 		if (!thisText) {
@@ -191,32 +231,33 @@ function dispatch() {
 }
 
 
-function setupGlobalRelaunchCommands() {
+function setupGlobalState() {
 	const commands: { [key: string]: string } = {}
 
-	let interactions_toggle = figma.currentPage.getPluginData(PROP_INTERACTIONS_TOGGLE) || VALUE_INTERACTIONS_TOGGLE_ON;
-	commands[CMD_INTERLINK] = "";
+	let interactions_toggle = document.getPluginData(PROP_INTERACTIONS_TOGGLE);
+
+	if(!interactions_toggle) {
+		interactions_toggle = VALUE_INTERACTIONS_TOGGLE_OFF;
+		document.setPluginData(PROP_INTERACTIONS_TOGGLE, interactions_toggle)
+	}
+
 	commands[CMD_INTERACTIONS_TOGGLE] = "Currently " + interactions_toggle;
-	figma.currentPage.parent.setRelaunchData(commands);
+	commands[CMD_CREATE_N_INTERLINK] = "";
+	document.setRelaunchData(commands);
 }
 
 function toggleInteractionLinking() {
-	let interactions_toggle = figma.currentPage.getPluginData(PROP_INTERACTIONS_TOGGLE);
+	let interactions_toggle = document.getPluginData(PROP_INTERACTIONS_TOGGLE);
 	if (!interactions_toggle) {
-		interactions_toggle = VALUE_INTERACTIONS_TOGGLE_ON; //set to on by default
+		interactions_toggle = VALUE_INTERACTIONS_TOGGLE_OFF; //set to on by default
 	} else {
 		interactions_toggle = interactions_toggle === VALUE_INTERACTIONS_TOGGLE_ON
 			? VALUE_INTERACTIONS_TOGGLE_OFF
 			: VALUE_INTERACTIONS_TOGGLE_ON
 	}
-	figma.currentPage.setPluginData(PROP_INTERACTIONS_TOGGLE, interactions_toggle);
-	setupGlobalRelaunchCommands();
+	document.setPluginData(PROP_INTERACTIONS_TOGGLE, interactions_toggle);
+	setupGlobalState();
 	figma.closePlugin(`Prototype Interactions linking are now ${interactions_toggle}.`);
-}
-
-function setInteractionLinking(value: "on" | "off") {
-	figma.currentPage.setPluginData(PROP_INTERACTIONS_TOGGLE, value);
-	setupGlobalRelaunchCommands();
 }
 
 // Runs this code if the plugin is run in Figma
@@ -228,22 +269,16 @@ if (figma.editorType === 'figma') {
 	} else if (figma.command == CMD_INTERLINK) {
 		dispatch();
 	} else { //launch from command menu
+		//removeGlobalPluginData()
 		//default action
-		setupGlobalRelaunchCommands();
+		setupGlobalState();
 		dispatch();
 		//setupExperiment();
 	}
 }
 
 async function setupDefaultComponent(): Promise<ComponentSetNode> {
-	let component = await createInterlinkComponent().then((component: ComponentSetNode) => {
-		let variant = component.defaultVariant;
-		//will need all that if component was copy/pasted => ids will change 
-		figma.currentPage.setPluginData(PROP_COMPONENT_NAME_KEY, component.name);
-		figma.currentPage.setPluginData(PROP_VARIANT_ID_KEY, variant.id);
-		figma.currentPage.setPluginData(PROP_VARIANT_NAME_KEY, variant.name);
-		return component;
-	});
+	let component = await createInterlinkComponent();
 	return component;
 }
 

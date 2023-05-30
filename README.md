@@ -1,40 +1,21 @@
-Below are the steps to get your plugin running. You can also find instructions at:
+# Interlinked
 
-  https://www.figma.com/plugin-docs/plugin-quickstart/
 
-This plugin template uses Typescript and NPM, two standard tools in creating JavaScript applications.
+Figma plugin that links two nodes for better navigation while in Desing Mode. Or in Presentation mode.
 
-First, download Node.js which comes with NPM. This will allow you to install TypeScript and other
-libraries. You can find the download link here:
 
-  https://nodejs.org/en/download/
+Interlined makes it easy to navigate in Design Mode within Figma file, even across pages.
 
-Next, install TypeScript using the command:
 
-  npm install -g typescript
+When you run Interlinked for the first time, it will create ‘interlink’ component for you.
 
-Finally, in the directory of your plugin, get the latest type definitions for the plugin API by running:
 
-  npm install --save-dev @figma/plugin-typings
+**Restyle your links.** You can change the component whatever you like, but it must have ‘interlink’ text node to work.
 
-If you are familiar with JavaScript, TypeScript will look very familiar. In fact, valid JavaScript code
-is already valid Typescript code.
 
-TypeScript adds type annotations to variables. This allows code editors such as Visual Studio Code
-to provide information about the Figma API while you are writing code, as well as help catch bugs
-you previously didn't notice.
+**Use your components.** You can also use Interlinked with your components of choice, as long as they have a text node named 'interlink'. Select 2 instances and run Interlined from the Command Pallete (Cmd+/)
 
-For more information, visit https://www.typescriptlang.org/
 
-Using TypeScript requires a compiler to convert TypeScript (code.ts) into JavaScript (code.js)
-for the browser to run.
 
-We recommend writing TypeScript code using Visual Studio code:
+**Works with interactions.** You can enable Presentation mode interactions from the Design Panel and the page level. It’s off by default because it can lead to a messy workspace, and Figma creates a starting point, which you probably don't need.
 
-1. Download Visual Studio Code if you haven't already: https://code.visualstudio.com/.
-2. Open this directory in Visual Studio Code.
-3. Compile TypeScript to JavaScript: Run the "Terminal > Run Build Task..." menu item,
-    then select "npm: watch". You will have to do this again every time
-    you reopen Visual Studio Code.
-
-That's it! Visual Studio Code will regenerate the JavaScript file every time you save.
