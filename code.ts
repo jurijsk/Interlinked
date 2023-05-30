@@ -74,7 +74,7 @@ async function ensureDefaultComponent(): Promise<ComponentSetNode| ComponentNode
 	return component;
 }
 
-async function createDefaultNode(): Promise<InstanceNode> {
+async function createNode(): Promise<InstanceNode> {
 	let componentId = document.getPluginData(PROP_COMPONENT_ID_KEY);
 	let component = <ComponentNode | ComponentSetNode> figma.getNodeById(componentId); //happy path
 	
@@ -96,28 +96,42 @@ async function createDefaultNode(): Promise<InstanceNode> {
 
 type Interlinkable = InstanceNode;// | FrameNode; doing this on frames is silly
 async function interlink(thisSide: Interlinkable = null, otherSide: Interlinkable = null) {
-	if (!thisSide) {
-		thisSide = await createDefaultNode();
-
-		thisSide.x = Math.round(figma.viewport.center.x - thisSide.width - PADDING / 2);
-		thisSide.y = Math.round(figma.viewport.center.y + thisSide.height + 80);
-	}
-
-	if (!otherSide) {
-		let otherSideId = thisSide.getPluginData(PROP_OTHER_SIDE_ID_KEY);
-		otherSide = <Interlinkable>figma.getNodeById(otherSideId);
-		if (!otherSide) {
-			otherSide = await createDefaultNode();
-
-			otherSide.x = Math.round(thisSide.x + thisSide.width + 24);
-			otherSide.y = Math.round(thisSide.y);
-		}
-	}
-
 	function createHyperlink(destinationId: string): HyperlinkTarget {
 		return {
 			type: "NODE",
 			value: destinationId
+		}
+	}
+	
+	if (!thisSide) {
+		thisSide = await createNode();
+		thisSide.x = Math.round(figma.viewport.center.x - thisSide.width - PADDING / 2);
+		thisSide.y = Math.round(figma.viewport.center.y + thisSide.height + 80);
+	}
+
+	if (!otherSide) { //other side not selected
+		//try to get other side
+		let otherSideId = thisSide.getPluginData(PROP_OTHER_SIDE_ID_KEY);
+		otherSide = otherSideId ? <Interlinkable>figma.getNodeById(otherSideId) : null;
+	
+		//if other side exists
+		if(otherSide){
+			//check if other side is already linked no existing node that is not this side
+			let otherSideOtherSideId = otherSide.getPluginData(PROP_OTHER_SIDE_ID_KEY);
+			if(otherSideOtherSideId != thisSide.id){
+				let otherSideOtherSide = <Interlinkable>figma.getNodeById(otherSideOtherSideId);
+				if(otherSideOtherSide) {
+					//then do not break existing link, but create new one instead.
+					//this can occur if the only selected node was shift+drag copies
+					otherSide = null;
+				}
+			}
+		}
+
+		if (!otherSide) {
+			otherSide = await createNode();
+			otherSide.x = Math.round(thisSide.x + thisSide.width + 24);
+			otherSide.y = Math.round(thisSide.y);
 		}
 	}
 
@@ -182,8 +196,6 @@ function dispatch() {
 			return null;
 		}
 
-
-
 		let thisText = thisSide.findOne(isProperText);
 		if (!thisText) {
 			return null;
@@ -204,6 +216,7 @@ function dispatch() {
 		return [thisSide, otherSide];
 	}
 	let goodSelection = getGoodSelection(figma.currentPage.selection);
+	
 
 	if (goodSelection) {
 		interlink(goodSelection[0], goodSelection[1])
@@ -269,7 +282,7 @@ if (figma.editorType === 'figma') {
 	} else if (figma.command == CMD_INTERLINK) {
 		dispatch();
 	} else { //launch from command menu
-		//removeGlobalPluginData()
+		//removeGlobalPluginData() //for debugging
 		//default action
 		setupGlobalState();
 		dispatch();

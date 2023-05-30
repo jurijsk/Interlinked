@@ -1,0 +1,34 @@
+{
+	"name": "Interlinked",
+	"id": "1242142144980840936",
+	"api": "1.0.0",
+	"main": "code.js",
+	"capabilities": [],
+	"enableProposedApi": false,
+	"editorType": [
+		"figma"
+	],
+	"enablePrivatePluginApi": true,
+	"relaunchButtons": [
+		{
+			"command": "create_n_interlink",
+			"name": "Create & Interlink",
+			"multipleSelection": true
+		},
+		{
+			"command": "toggle_interactions",
+			"name": "Toggle interactions linking",
+			"multipleSelection": false
+		},
+		{
+			"command": "interlink",
+			"name": "Interlink",
+			"multipleSelection": true
+		}
+	],
+	"networkAccess": {
+		"allowedDomains": [
+			"none"
+		]
+	}
+}

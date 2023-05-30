@@ -19,3 +19,12 @@ When you run Interlinked for the first time, it will create ‘interlink’ comp
 
 **Works with interactions.** You can enable Presentation mode interactions from the Design Panel and the page level. It’s off by default because it can lead to a messy workspace, and Figma creates a starting point, which you probably don't need.
 
+
+
+
+## Versions
+
+v2
+
+Fixed handling of connecting using single node. When you copy a single node from an existing connection and interlink, a new node will be created. Previously, it would break the existing link between the copied node and its counterpart. 
+
