@@ -25,6 +25,11 @@
 			"name": "Interlink",
 			"multipleSelection": true
 		}
+		,{
+			"command": "experiment",
+			"name": "Experiment",
+			"multipleSelection": true
+		}
 	],
 	"networkAccess": {
 		"allowedDomains": [
