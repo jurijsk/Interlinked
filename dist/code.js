@@ -5,14 +5,12 @@
 //console.log((<VectorNode>figma.currentPage.selection[0]).strokes)
 const document = figma.currentPage.parent;
 const PROP_OTHER_SIDE_ID_KEY = "otherSideId";
-const FAUIL_MISERABLY = true;
 const EXPECTED_TXT_NODE_NAME = 'interlink';
 const PADDING = 20;
 const DEFAULT_COMPONENT_NAME = "interlink";
 const DOCUMENT_PROP_INTERACTIONS_TOGGLE = 'prop_interactions_toggle';
 const DEPRECATED_DOCUMENT_PROP_COMPONENT_NAME_KEY = "component_name";
 const DOCUMENT_PROP_COMPONENT_ID_KEY = "component_id";
-const PROP_INTERLINK_DEFAULT_COMPONENT_MARK_KEY = "interlink_default_component";
 function removeDocumentPluginData() {
     document.setPluginData(DEPRECATED_DOCUMENT_PROP_COMPONENT_NAME_KEY, ""); //remove this after few versions. deprecated
     document.setPluginData(DOCUMENT_PROP_INTERACTIONS_TOGGLE, "");
@@ -24,9 +22,9 @@ const CMD_INTERACTIONS_TOGGLE = 'toggle_interactions';
 const CMD_INTERLINK = 'interlink';
 const CMD_CREATE_N_INTERLINK = 'create_n_interlink';
 const CMD_EXPERIMENT_KEY = 'experiment';
-function getMain(instance) {
+async function getMain(instance) {
     console.log(instance);
-    let component = instance.mainComponent;
+    let component = await instance.getMainComponentAsync();
     if (component.parent && component.parent.type == "COMPONENT_SET") {
         component = component.parent;
     }
@@ -35,7 +33,7 @@ function getMain(instance) {
 async function createNode(alike) {
     let component;
     if (alike) {
-        component = getMain(alike);
+        component = await getMain(alike);
     }
     else {
         component = await ensureDefaultComponent();
@@ -46,7 +44,7 @@ async function createNode(alike) {
     return component.createInstance();
 }
 function cloneNode(thisSide) {
-    let clone = thisSide.clone();
+    const clone = thisSide.clone();
     return clone;
 }
 var InterlinkResult;
@@ -56,6 +54,19 @@ var InterlinkResult;
     InterlinkResult[InterlinkResult["WithInteractions"] = 3] = "WithInteractions";
     InterlinkResult[InterlinkResult["NotDefault"] = 5] = "NotDefault";
 })(InterlinkResult || (InterlinkResult = {}));
+function createReaction(destinationId) {
+    return {
+        action: {
+            destinationId: destinationId,
+            navigation: "NAVIGATE",
+            preserveScrollPosition: false,
+            resetVideoPosition: false,
+            transition: null,
+            type: "NODE"
+        },
+        trigger: { type: 'ON_CLICK' }
+    };
+}
 async function interlink(thisSide = null, otherSide = null) {
     function createHyperlink(destinationId) {
         return { type: "NODE", value: destinationId };
@@ -67,14 +78,14 @@ async function interlink(thisSide = null, otherSide = null) {
     }
     if (!otherSide) { //other side not selected
         //try to get other side
-        let otherSideId = thisSide.getPluginData(PROP_OTHER_SIDE_ID_KEY);
-        otherSide = otherSideId ? figma.getNodeById(otherSideId) : null;
+        const otherSideId = thisSide.getPluginData(PROP_OTHER_SIDE_ID_KEY);
+        otherSide = otherSideId ? await figma.getNodeByIdAsync(otherSideId) : null;
         //if other side exists
         if (otherSide) {
             //check if other side is already linked no existing node that is not this side
-            let otherSideOtherSideId = otherSide.getPluginData(PROP_OTHER_SIDE_ID_KEY);
+            const otherSideOtherSideId = otherSide.getPluginData(PROP_OTHER_SIDE_ID_KEY);
             if (otherSideOtherSideId != thisSide.id) {
-                let otherSideOtherSide = figma.getNodeById(otherSideOtherSideId);
+                const otherSideOtherSide = await figma.getNodeByIdAsync(otherSideOtherSideId);
                 if (otherSideOtherSide) {
                     //then do not break existing link, but create new one instead.
                     //this can occur if the only selected node was shift+drag copies
@@ -88,11 +99,11 @@ async function interlink(thisSide = null, otherSide = null) {
             otherSide.y = Math.round(thisSide.y);
         }
     }
-    let thisSideInterlink = thisSide.findOne(isProperText);
+    const thisSideInterlink = thisSide.findOne(isProperText);
     if (thisSideInterlink) {
         thisSideInterlink.hyperlink = createHyperlink(otherSide.id);
     }
-    let otherSideInterlink = otherSide.findOne(isProperText);
+    const otherSideInterlink = otherSide.findOne(isProperText);
     if (otherSideInterlink) {
         otherSideInterlink.hyperlink = createHyperlink(thisSide.id);
     }
@@ -105,21 +116,8 @@ async function interlink(thisSide = null, otherSide = null) {
     const interactionsEnabled = document.getPluginData(DOCUMENT_PROP_INTERACTIONS_TOGGLE) == VALUE_INTERACTIONS_TOGGLE_ON ? true : false;
     if (interactionsEnabled) {
         result |= InterlinkResult.WithInteractions;
-        function createReaction(destinationId) {
-            return {
-                action: {
-                    destinationId: destinationId,
-                    navigation: "NAVIGATE",
-                    preserveScrollPosition: false,
-                    resetVideoPosition: false,
-                    transition: null,
-                    type: "NODE"
-                },
-                trigger: { type: 'ON_CLICK' }
-            };
-        }
-        thisSide.reactions = [createReaction(otherSide.id)];
-        otherSide.reactions = [createReaction(thisSide.id)];
+        await thisSide.setReactionsAsync([createReaction(otherSide.id)]);
+        await otherSide.setReactionsAsync([createReaction(thisSide.id)]);
     }
     else {
         //remove interactions?
@@ -129,8 +127,8 @@ async function interlink(thisSide = null, otherSide = null) {
     otherSide.setPluginData(PROP_OTHER_SIDE_ID_KEY, thisSide.id);
     thisSide.setRelaunchData({ interlink: "Use after cut/paste" });
     otherSide.setRelaunchData({ interlink: "Use after cut/paste" });
-    let component = getMain(thisSide);
-    let defaultComponentId = document.getPluginData(DOCUMENT_PROP_COMPONENT_ID_KEY);
+    const component = await getMain(thisSide);
+    const defaultComponentId = document.getPluginData(DOCUMENT_PROP_COMPONENT_ID_KEY);
     if (component.id != defaultComponentId) {
         result |= InterlinkResult.NotDefault;
     }
@@ -145,7 +143,7 @@ function handleInterlinkResult(result, componentId) {
         if ((result & InterlinkResult.NotDefault) == InterlinkResult.NotDefault) {
             figma.notify("Interlinked. Non-standard component used.", {
                 timeout: 5000,
-                onDequeue: (reason) => {
+                onDequeue: ( /* reason: NotifyDequeueReason*/) => {
                     figma.closePlugin();
                 },
                 button: {
@@ -172,15 +170,15 @@ function dispatch() {
         if (seelction.length > 2) {
             return null;
         }
-        let thisSide = seelction[0];
+        const thisSide = seelction[0];
         if (thisSide.type != "INSTANCE") {
             return null;
         }
-        let thisText = thisSide.findOne(isProperText);
+        const thisText = thisSide.findOne(isProperText);
         if (!thisText) {
             return null;
         }
-        let otherSide = seelction[1];
+        const otherSide = seelction[1];
         if (!otherSide) {
             //one proper instance selected;
             return [thisSide];
@@ -188,20 +186,20 @@ function dispatch() {
         if (otherSide.type != "INSTANCE") {
             return null;
         }
-        let otherText = thisSide.findOne(isProperText);
+        const otherText = thisSide.findOne(isProperText);
         if (!otherText) {
             return null;
         }
         return [thisSide, otherSide];
     }
-    let goodSelection = getGoodSelection(figma.currentPage.selection);
+    const goodSelection = getGoodSelection(figma.currentPage.selection);
     if (goodSelection) {
         interlink(goodSelection[0], goodSelection[1]);
     }
     else {
         figma.notify("Can not interlink with current selection", {
             timeout: 5000,
-            onDequeue: (reason) => {
+            onDequeue: ( /* reason: NotifyDequeueReason */) => {
                 figma.closePlugin();
             },
             button: {
@@ -260,7 +258,7 @@ if (figma.editorType === 'figma') {
     }
 }
 function experiment() {
-    let selected = figma.currentPage.selection[0];
+    const selected = figma.currentPage.selection[0];
     if (selected.type == "COMPONENT") {
         console.log(selected, selected.id);
     }
@@ -279,13 +277,13 @@ function experiment() {
     // });
 }
 async function ensureDefaultComponent() {
-    let knownComponentId = document.getPluginData(DOCUMENT_PROP_COMPONENT_ID_KEY);
+    const knownComponentId = document.getPluginData(DOCUMENT_PROP_COMPONENT_ID_KEY);
     let component;
     if (!knownComponentId) {
         component = await setupDefaultComponent();
     }
     else {
-        const candidate = figma.getNodeById(knownComponentId);
+        const candidate = await figma.getNodeByIdAsync(knownComponentId);
         if (!candidate) {
             console.log("Can not find Interlinked component");
             //do not really know how this can happen but here we go
@@ -302,7 +300,7 @@ async function ensureDefaultComponent() {
     return component;
 }
 async function setupDefaultComponent() {
-    let componentset = await createInterlinkComponent();
+    const componentset = await createInterlinkComponent();
     setDefaultComponent(componentset.id);
     return componentset;
 }
@@ -311,7 +309,7 @@ function setDefaultComponent(componentId) {
 }
 async function createInterlinkComponent() {
     function createVariant(flip, name) {
-        var component = figma.createComponent();
+        const component = figma.createComponent();
         component.name = name;
         component.layoutMode = "HORIZONTAL";
         component.horizontalPadding = 20;
@@ -319,7 +317,7 @@ async function createInterlinkComponent() {
         component.itemSpacing = 12;
         component.clipsContent = false;
         component.resize(10, 10);
-        let background = figma.createRectangle();
+        const background = figma.createRectangle();
         background.resize(10, 10);
         background.name = 'bg';
         background.locked = true;
@@ -360,7 +358,7 @@ async function createInterlinkComponent() {
                 ]
             }
         ];
-        let text = figma.createText();
+        const text = figma.createText();
         text.fontName = FONT;
         text.lineHeight = { value: 24, unit: "PIXELS" };
         text.fontSize = 16;
@@ -374,14 +372,14 @@ async function createInterlinkComponent() {
                 color: { r: 1, g: 1, b: 1, a: .25 }
             }
         ];
-        let icon = figma.createVector();
+        const icon = figma.createVector();
         icon.name = 'icon';
         icon.vectorPaths = [{ data: flip ? iconLeftData : iconRightData, windingRule: "EVENODD" }];
         icon.constrainProportions = true;
         icon.fills = [{ type: "SOLID", color: { r: 0, g: 0, b: 0 } }];
         icon.strokes = [];
         icon.locked = true;
-        let iconBox = figma.createFrame();
+        const iconBox = figma.createFrame();
         iconBox.resize(24, 24);
         iconBox.constrainProportions = true;
         iconBox.fills = [];
@@ -411,10 +409,10 @@ async function createInterlinkComponent() {
         return component;
     }
     let set;
-    let FONT = { family: "Consolas", style: "Regular" };
+    const FONT = { family: "Consolas", style: "Regular" };
     await figma.loadFontAsync(FONT).then(() => {
-        let left = createVariant(true, "flip=true");
-        let right = createVariant(false, "flip=false");
+        const left = createVariant(true, "flip=true");
+        const right = createVariant(false, "flip=false");
         set = figma.combineAsVariants([left, right], figma.currentPage);
         set.name = DEFAULT_COMPONENT_NAME;
         set.layoutMode = "HORIZONTAL";
@@ -436,8 +434,9 @@ async function createInterlinkComponent() {
     });
     return set;
 }
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function setupExperiment() {
-    let commands = figma.currentPage.getRelaunchData();
+    const commands = figma.currentPage.getRelaunchData();
     commands[CMD_EXPERIMENT_KEY] = "Experiment";
     figma.currentPage.setRelaunchData(commands);
 }
