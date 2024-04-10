@@ -56,14 +56,14 @@ var InterlinkResult;
 })(InterlinkResult || (InterlinkResult = {}));
 function createReaction(destinationId) {
     return {
-        action: {
-            destinationId: destinationId,
-            navigation: "NAVIGATE",
-            preserveScrollPosition: false,
-            resetVideoPosition: false,
-            transition: null,
-            type: "NODE"
-        },
+        actions: [{
+                destinationId: destinationId,
+                navigation: "NAVIGATE",
+                preserveScrollPosition: false,
+                resetVideoPosition: false,
+                transition: null,
+                type: "NODE"
+            }],
         trigger: { type: 'ON_CLICK' }
     };
 }

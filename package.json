@@ -10,10 +10,10 @@
 	"author": "Jurijs Kovzels",
 	"license": "MIT",
 	"devDependencies": {
-		"@figma/eslint-plugin-figma-plugins": "^0.14.0",
-		"@figma/plugin-typings": "1.88.0",
-		"@typescript-eslint/eslint-plugin": "^7.1.1",
-		"typescript": "5.4.2"
+		"@figma/eslint-plugin-figma-plugins": "^0.15.0",
+		"@figma/plugin-typings": "1.90.0",
+		"@typescript-eslint/eslint-plugin": "^7.6.0",
+		"typescript": "5.4.4"
 	},
 	"dependencies": {
 		"figma-plugin-ds": "^1.0.1"

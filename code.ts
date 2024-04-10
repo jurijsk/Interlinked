@@ -74,14 +74,14 @@ enum InterlinkResult {
 
 function createReaction(destinationId: string): Reaction {
 	return {
-		action: {
+		actions: [{
 			destinationId: destinationId,
 			navigation: "NAVIGATE",
 			preserveScrollPosition: false,
 			resetVideoPosition: false,
 			transition: null,
 			type: "NODE"
-		},
+		}],
 		trigger: { type: 'ON_CLICK' }
 	}
 }
